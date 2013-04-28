@@ -255,11 +255,11 @@
       this.state.direction *= -1;
       if (this.state.direction === 1) {
         if (!this.state.spike) {
-          if (spiked_neighbors.length >= 4) {
+          if (spiked_neighbors.length >= 4 && spiked_neighbors < 8) {
             this.state.spike = true;
           } else {
             spike_probability = Math.random();
-            spike_probability += (this.config.trembler.spike.probability * this.config.trembler.spike.bias) * local_network_size;
+            spike_probability += (this.config.trembler.spike.probability * this.config.trembler.spike.bias) * Math.sqrt(local_network_size);
             if (1 - spike_probability <= this.config.trembler.spike.probability) {
               this.state.spike = true;
             }
@@ -280,7 +280,7 @@
           } else {
             p = Math.random();
             if (this.network.root !== this) {
-              p -= (this.config.trembler.spike.restore_probability * this.config.trembler.spike.restore_bias) * local_network_size;
+              p -= (this.config.trembler.spike.restore_probability * this.config.trembler.spike.restore_bias) * Math.sqrt(local_network_size);
             }
             if (1 - p <= this.config.trembler.spike.restore_probability) {
               this.state.spike = false;

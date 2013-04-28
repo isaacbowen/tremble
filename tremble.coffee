@@ -219,11 +219,11 @@ class Trembler
     # shall we spike?
     if @state.direction == 1 # up
       unless @state.spike
-        if spiked_neighbors.length >= 4
+        if spiked_neighbors.length >= 4 and spiked_neighbors < 8
           @state.spike = true
         else
           spike_probability = Math.random()
-          spike_probability += (@config.trembler.spike.probability * @config.trembler.spike.bias) * local_network_size
+          spike_probability += (@config.trembler.spike.probability * @config.trembler.spike.bias) * Math.sqrt(local_network_size)
 
           if 1 - spike_probability <= @config.trembler.spike.probability
             @state.spike = true
@@ -245,7 +245,7 @@ class Trembler
 
           # spike roots are, oddly, more fragile
           unless @network.root == this
-            p -= (@config.trembler.spike.restore_probability * @config.trembler.spike.restore_bias) * local_network_size
+            p -= (@config.trembler.spike.restore_probability * @config.trembler.spike.restore_bias) * Math.sqrt(local_network_size)
 
           if 1 - p <= @config.trembler.spike.restore_probability
             @state.spike = false
