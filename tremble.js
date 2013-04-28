@@ -66,7 +66,7 @@
       this.scene.add(ambient_light);
       this.renderer = new THREE.WebGLRenderer();
       this.renderer.setSize(this.config.width, this.config.height);
-      this.renderer.setClearColorHex(0xDDDDDD);
+      this.renderer.setClearColor(0xDDDDDD);
       range = (function() {
         _results = [];
         for (var _i = _ref = -this.config.factor, _ref1 = this.config.factor; _ref <= _ref1 ? _i <= _ref1 : _i >= _ref1; _ref <= _ref1 ? _i++ : _i--){ _results.push(_i); }
@@ -142,12 +142,13 @@
       rings: 16,
       color: 0xCCCCCC,
       tremble: {
-        base: 4
+        base: 5
       },
       spike: {
         probability: 0.005,
-        proximity_bias: 0.05,
-        factor: 15
+        bias: 50,
+        restore_probability: 0.8,
+        base: 50
       }
     };
 
@@ -176,7 +177,7 @@
       return this.tremble();
     };
 
-    Trembler.prototype.get_neighbors = function() {
+    Trembler.prototype.get_neighbors = function(spikes) {
       var dx, dy, neighbor, neighbors, nx, ny, _i, _j, _len, _len1, _ref, _ref1;
       neighbors = [];
       _ref = [-1, 0, 1];
@@ -185,13 +186,16 @@
         _ref1 = [-1, 0, 1];
         for (_j = 0, _len1 = _ref1.length; _j < _len1; _j++) {
           dy = _ref1[_j];
-          nx = this.config.index[0] + dx;
-          ny = this.config.index[1] + dy;
-          if (nx === this.config.index[0] && ny === this.config.index[1]) {
+          if ((dx === dy && dy === 0)) {
             continue;
           }
+          nx = this.config.index[0] + dx;
+          ny = this.config.index[1] + dy;
           neighbor = this.config.parent.get_trembler(nx, ny);
           if (neighbor != null) {
+            if (spikes && !neighbor.state.spike) {
+              continue;
+            }
             neighbors.push(neighbor);
           }
         }
@@ -200,41 +204,43 @@
     };
 
     Trembler.prototype.tremble = function() {
-      var neighbor, spike_probability, tremble_amount, tremble_duration, trembler, tween, _i, _len, _ref;
-      trembler = this;
+      var spike_probability, spiked_neighbor_count, tremble_duration, tremble_to, trembler, tween;
+      spiked_neighbor_count = this.get_neighbors(true).length;
       this.state.direction *= -1;
       if (this.state.direction === 1) {
-        tremble_amount = Math.random() * this.config.tremble.base;
-        spike_probability = Math.random();
-        _ref = this.get_neighbors();
-        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-          neighbor = _ref[_i];
-          if (neighbor.state.spike) {
-            spike_probability += this.config.spike.proximity_bias;
+        if (!this.state.spike) {
+          spike_probability = Math.random();
+          spike_probability += (this.config.spike.probability * this.config.spike.bias) * spiked_neighbor_count;
+          if (1 - spike_probability <= this.config.spike.probability) {
+            this.state.spike = true;
           }
         }
-        if (1 - spike_probability <= this.config.spike.probability) {
-          this.state.spike = true;
-          tremble_amount *= this.config.spike.factor;
-        }
       } else {
-        tremble_amount = -1 * this.mesh.position.y;
+        if (this.state.spike) {
+          spike_probability = Math.random();
+          spike_probability += (this.config.spike.probability * this.config.spike.bias) * spiked_neighbor_count;
+          if (1 - spike_probability <= this.config.spike.restore_probability) {
+            this.state.spike = false;
+          }
+        }
       }
-      tremble_duration = 20 * this.config.speed + Math.random() * 30;
+      tremble_to = 0;
       if (this.state.spike) {
-        tremble_duration *= 1.1;
+        tremble_to += this.config.spike.base;
       }
+      if (this.state.direction === 1) {
+        tremble_to += Math.random() * this.config.tremble.base;
+      }
+      tremble_duration = 10 * this.config.speed + Math.random() * 50;
+      trembler = this;
       tween = new TWEEN.Tween(this.mesh.position);
       tween.to({
-        y: tremble_amount
+        y: tremble_to
       }, tremble_duration);
       tween.onUpdate(function() {
         return trembler.mesh.position.set(this.x, this.y, this.z);
       });
       tween.onComplete(function() {
-        if (trembler.state.direction === -1) {
-          trembler.state.spike = false;
-        }
         return trembler.tremble();
       });
       return tween.start();
@@ -253,7 +259,7 @@
       container: $container,
       width: $container.width(),
       height: $container.height(),
-      speed: 1
+      speed: 10
     });
     return tremble.start();
   });

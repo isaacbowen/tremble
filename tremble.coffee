@@ -58,7 +58,7 @@ class Tremble
     # here
     @renderer = new THREE.WebGLRenderer()
     @renderer.setSize @config.width, @config.height
-    @renderer.setClearColorHex 0xDDDDDD
+    @renderer.setClearColor 0xDDDDDD
 
     # that which trembles
     range = [-@config.factor..@config.factor]
@@ -114,11 +114,12 @@ class Trembler
     color: 0xCCCCCC
 
     tremble:
-      base: 4
+      base: 5
     spike:
       probability: 0.005
-      proximity_bias: 0.05
-      factor: 15
+      bias: 50
+      restore_probability: 0.8
+      base: 50
 
   state:
     spike: false
@@ -141,59 +142,76 @@ class Trembler
     @mesh.position.set @config.position.x, @config.position.y, @config.position.z
 
   start: ->
+    # up is down, I guess
     @state.direction ?= 1
+
+    # begin
     @tremble()
 
-  get_neighbors: ->
+  get_neighbors: (spikes) ->
     neighbors = []
 
     for dx in [-1, 0, 1]
       for dy in [-1, 0, 1]
+        continue if dx == dy == 0
+
         nx = @config.index[0] + dx
         ny = @config.index[1] + dy
 
-        continue if nx == @config.index[0] and ny == @config.index[1]
-
         neighbor = @config.parent.get_trembler(nx, ny)
-        neighbors.push neighbor if neighbor?
+
+        if neighbor?
+          if spikes and not neighbor.state.spike
+            continue
+          neighbors.push neighbor
 
     neighbors
 
   tremble: ->
-    trembler = this
+    spiked_neighbor_count = @get_neighbors(true).length
 
+    # switch direction
     @state.direction *= -1
 
+    # shall we spike?
+    if @state.direction == 1 # up
+      unless @state.spike
+        spike_probability = Math.random()
+        spike_probability += (@config.spike.probability * @config.spike.bias) * spiked_neighbor_count
+
+        if 1 - spike_probability <= @config.spike.probability
+          @state.spike = true
+
+    # shall we unspike?
+    else
+      if @state.spike
+        spike_probability = Math.random()
+        spike_probability += (@config.spike.probability * @config.spike.bias) * spiked_neighbor_count
+
+        if 1 - spike_probability <= @config.spike.restore_probability
+          @state.spike = false
+
+    # where to?
+    tremble_to = 0
+    tremble_to += @config.spike.base if @state.spike
 
     if @state.direction == 1
-      tremble_amount = Math.random() * @config.tremble.base
+      tremble_to += Math.random() * @config.tremble.base
 
-      spike_probability = Math.random()
-      for neighbor in @get_neighbors()
-        if neighbor.state.spike
-          spike_probability += @config.spike.proximity_bias
+    # duration
+    tremble_duration = 10 * @config.speed + Math.random() * 50
 
-      if 1 - spike_probability <= @config.spike.probability
-        @state.spike = true
-        tremble_amount *= @config.spike.factor
-
-    else
-      tremble_amount = -1 * @mesh.position.y
-
-    tremble_duration = 20 * @config.speed + Math.random() * 30
-    tremble_duration *= 1.1 if @state.spike
-
+    # build the tween
+    trembler = this
     tween = new TWEEN.Tween @mesh.position
-    tween.to y: tremble_amount, tremble_duration
+    tween.to y: tremble_to, tremble_duration
     tween.onUpdate ->
       trembler.mesh.position.set @x, @y, @z
     tween.onComplete ->
-      if trembler.state.direction == -1
-        trembler.state.spike = false
-
       # brannigan
       trembler.tremble()
 
+    # start that tween
     tween.start()
 
   render: (time) ->
@@ -205,5 +223,5 @@ $ ->
     container: $container
     width: $container.width()
     height: $container.height()
-    speed: 1
+    speed: 10
   tremble.start()
