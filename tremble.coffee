@@ -3,6 +3,7 @@ class Tremble
     container: '#container'
     speed: 1
     factor: 7
+
     camera:
       aspect: null
       near: 5
@@ -11,6 +12,7 @@ class Tremble
         x: 200
         y: 700
         z: 1000
+
     light:
       color: 0xFFFFFF
       intensity: 0.6
@@ -18,6 +20,21 @@ class Tremble
         x: 300
         y: 500
         z: 500
+
+    trembler:
+      radius: 10
+      segments: 16
+      rings: 16
+      color: 0xCCCCCC
+
+      tremble:
+        base: 5
+      spike:
+        probability: 0.001
+        bias: 50
+        restore_probability: 0.1
+        restore_bias: 10
+        base: 50
 
   state:
     started: false
@@ -68,7 +85,7 @@ class Tremble
       for m in range
         trembler = new Trembler
           parent: this
-          speed: @config.speed
+          config: @config
           index: [n, m]
           position:
             x: n * 100
@@ -98,48 +115,44 @@ class Tremble
     if @state.started
       window.requestAnimationFrame(@render)
 
+class SpikeNetwork
+  constructor: (root) ->
+    @root = root
+    @tremblers = [root]
+    @size = 1
+
+  add_trembler: (trembler) ->
+    @tremblers.push trembler
+    @size++
+
 class Trembler
-  config:
-    parent: null
-    index: [null, null]
-
-    position:
-      x: 0
-      y: 0
-      z: 0
-    speed: 1
-    radius: 10
-    segments: 16
-    rings: 16
-    color: 0xCCCCCC
-
-    tremble:
-      base: 5
-    spike:
-      probability: 0.005
-      bias: 50
-      restore_probability: 0.8
-      base: 50
-
   state:
     spike: false
     direction: null
     tween: null
 
-  constructor: (config) ->
-    @config = $.extend true, {}, @config, config
+  constructor: (opts) ->
+    {@config, @index, @position, @parent} = opts
+
     @state = $.extend true, {}, @state
 
     @geometry = new THREE.SphereGeometry(
-      @config.radius,
-      @config.segments,
-      @config.rings,
+      @config.trembler.radius,
+      @config.trembler.segments,
+      @config.trembler.rings,
     )
 
-    @mesh_material = new THREE.MeshPhongMaterial color: @config.color
+    @mesh_material = new THREE.MeshPhongMaterial(
+      color: @config.trembler.color
+      overdraw: true
+    )
 
     @mesh = new THREE.Mesh @geometry, @mesh_material
-    @mesh.position.set @config.position.x, @config.position.y, @config.position.z
+    @mesh.position.set(
+      @position.x,
+      @position.y,
+      @position.z,
+    )
 
   start: ->
     # up is down, I guess
@@ -155,10 +168,10 @@ class Trembler
       for dy in [-1, 0, 1]
         continue if dx == dy == 0
 
-        nx = @config.index[0] + dx
-        ny = @config.index[1] + dy
+        nx = @index[0] + dx
+        ny = @index[1] + dy
 
-        neighbor = @config.parent.get_trembler(nx, ny)
+        neighbor = @parent.get_trembler(nx, ny)
 
         if neighbor?
           if spikes and not neighbor.state.spike
@@ -168,7 +181,8 @@ class Trembler
     neighbors
 
   tremble: ->
-    spiked_neighbor_count = @get_neighbors(true).length
+    spiked_neighbors = @get_neighbors(true)
+    spike_bias = spiked_neighbors[0]?.spike_network.size or 0
 
     # switch direction
     @state.direction *= -1
@@ -177,29 +191,45 @@ class Trembler
     if @state.direction == 1 # up
       unless @state.spike
         spike_probability = Math.random()
-        spike_probability += (@config.spike.probability * @config.spike.bias) * spiked_neighbor_count
+        spike_probability += (@config.trembler.spike.probability * @config.trembler.spike.bias) * spike_bias
 
-        if 1 - spike_probability <= @config.spike.probability
+        if 1 - spike_probability <= @config.trembler.spike.probability
           @state.spike = true
+
+          if spiked_neighbors.length == 0
+            @spike_network = new SpikeNetwork this
+          else
+            @spike_network = spiked_neighbors[0].spike_network
 
     # shall we unspike?
     else
       if @state.spike
-        spike_probability = Math.random()
-        spike_probability += (@config.spike.probability * @config.spike.bias) * spiked_neighbor_count
-
-        if 1 - spike_probability <= @config.spike.restore_probability
+        if not @spike_network.root.state.spike
           @state.spike = false
+        else
+          p = Math.random()
+
+          # spike roots are, oddly, more fragile
+          unless @spike_network.root == this
+            p -= (@config.trembler.spike.restore_probability * @config.trembler.spike.restore_bias) * spike_bias
+
+          if 1 - p <= @config.trembler.spike.restore_probability
+            @state.spike = false
+
+      if not @state.spike
+        @spike_network = null
 
     # where to?
     tremble_to = 0
-    tremble_to += @config.spike.base if @state.spike
-
     if @state.direction == 1
-      tremble_to += Math.random() * @config.tremble.base
+      tremble_to += Math.random() * @config.trembler.tremble.base
 
     # duration
     tremble_duration = 10 * @config.speed + Math.random() * 50
+
+    # handle spike conditions
+    if @state.spike
+      tremble_to += @config.trembler.spike.base
 
     # build the tween
     trembler = this
