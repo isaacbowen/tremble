@@ -45,10 +45,7 @@ class Tremble
   constructor: (config) ->
     @config = $.extend true, {}, @config, config
 
-    $container = $(@config.container)
-    @config.width ?= $container.width()
-    @config.height ?= $container.height()
-    @config.camera.aspect ?= @config.width / @config.height
+    @resize()
 
     # cause a scene
     @scene = new THREE.Scene()
@@ -61,6 +58,7 @@ class Tremble
       @config.camera.far,
     )
     $.extend @camera.position, @config.camera.position
+    @camera.lookAt(new THREE.Vector3(70, 0, 300))
     @scene.add @camera
 
     # light it up
@@ -98,6 +96,20 @@ class Tremble
     # add to container
     $(@config.container).append @renderer.domElement
 
+  resize: ->
+    $container = $(@config.container)
+    @config.width = $container.width()
+    @config.height = $container.height()
+    @config.camera.aspect = @config.width / @config.height
+
+    if @camera
+      console.log 'updating camera'
+      @camera.aspect = @config.camera.aspect
+      @camera.updateProjectionMatrix()
+    if @renderer
+      console.log 'updating renderer'
+      @renderer.setSize @config.width, @config.height
+
   get_trembler: (x, y) -> @trembler_map[x] and @trembler_map[x][y]
 
   start: ->
@@ -108,7 +120,13 @@ class Tremble
 
   render: (time) =>
     TWEEN.update()
-    @camera.lookAt(new THREE.Vector3(70, 0, 300))
+
+    # have we been overcome?
+    for trembler in @tremblers
+      if trembler.network?.size == @tremblers.length
+        @config.trembler.color = trembler.network.color
+        trembler.network.kill()
+
     @renderer.render @scene, @camera
 
     # if we've been started, do the loop
@@ -126,6 +144,12 @@ class Network
   add_trembler: (trembler) ->
     @tremblers.push trembler
     @size++
+
+  kill: ->
+    for trembler in @tremblers
+      trembler.state.spike = false
+      trembler.network = null
+
 
 class Trembler
   state:
@@ -209,6 +233,7 @@ class Trembler
           @network = new Network this
         else
           @network = spiked_neighbors[0].network
+          @network.add_trembler this
 
     # shall we unspike?
     else
@@ -263,7 +288,7 @@ $ ->
   $container = $('#container')
   tremble = window.tremble = new Tremble
     container: $container
-    width: $container.width()
-    height: $container.height()
     speed: 10
   tremble.start()
+
+  $(window).resize -> tremble.resize()

@@ -59,21 +59,13 @@
     function Tremble(config) {
       this.render = __bind(this.render, this);
 
-      var $container, m, n, range, trembler, _base, _base1, _base2, _base3, _i, _j, _k, _len, _len1, _ref, _ref1, _results;
+      var m, n, range, trembler, _base, _i, _j, _k, _len, _len1, _ref, _ref1, _results;
       this.config = $.extend(true, {}, this.config, config);
-      $container = $(this.config.container);
-      if ((_base = this.config).width == null) {
-        _base.width = $container.width();
-      }
-      if ((_base1 = this.config).height == null) {
-        _base1.height = $container.height();
-      }
-      if ((_base2 = this.config.camera).aspect == null) {
-        _base2.aspect = this.config.width / this.config.height;
-      }
+      this.resize();
       this.scene = new THREE.Scene();
       this.camera = new THREE.PerspectiveCamera(this.config.camera.view_angle, this.config.camera.aspect, this.config.camera.near, this.config.camera.far);
       $.extend(this.camera.position, this.config.camera.position);
+      this.camera.lookAt(new THREE.Vector3(70, 0, 300));
       this.scene.add(this.camera);
       this.light = new THREE.PointLight(this.config.light.color, this.config.light.intensity);
       $.extend(this.light.position, this.config.light.position);
@@ -90,8 +82,8 @@
       }).apply(this);
       for (_j = 0, _len = range.length; _j < _len; _j++) {
         n = range[_j];
-        if ((_base3 = this.trembler_map)[n] == null) {
-          _base3[n] = {};
+        if ((_base = this.trembler_map)[n] == null) {
+          _base[n] = {};
         }
         for (_k = 0, _len1 = range.length; _k < _len1; _k++) {
           m = range[_k];
@@ -112,6 +104,23 @@
       $(this.config.container).append(this.renderer.domElement);
     }
 
+    Tremble.prototype.resize = function() {
+      var $container;
+      $container = $(this.config.container);
+      this.config.width = $container.width();
+      this.config.height = $container.height();
+      this.config.camera.aspect = this.config.width / this.config.height;
+      if (this.camera) {
+        console.log('updating camera');
+        this.camera.aspect = this.config.camera.aspect;
+        this.camera.updateProjectionMatrix();
+      }
+      if (this.renderer) {
+        console.log('updating renderer');
+        return this.renderer.setSize(this.config.width, this.config.height);
+      }
+    };
+
     Tremble.prototype.get_trembler = function(x, y) {
       return this.trembler_map[x] && this.trembler_map[x][y];
     };
@@ -128,8 +137,16 @@
     };
 
     Tremble.prototype.render = function(time) {
+      var trembler, _i, _len, _ref, _ref1;
       TWEEN.update();
-      this.camera.lookAt(new THREE.Vector3(70, 0, 300));
+      _ref = this.tremblers;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        trembler = _ref[_i];
+        if (((_ref1 = trembler.network) != null ? _ref1.size : void 0) === this.tremblers.length) {
+          this.config.trembler.color = trembler.network.color;
+          trembler.network.kill();
+        }
+      }
       this.renderer.render(this.scene, this.camera);
       if (this.state.started) {
         return window.requestAnimationFrame(this.render);
@@ -154,6 +171,18 @@
     Network.prototype.add_trembler = function(trembler) {
       this.tremblers.push(trembler);
       return this.size++;
+    };
+
+    Network.prototype.kill = function() {
+      var trembler, _i, _len, _ref, _results;
+      _ref = this.tremblers;
+      _results = [];
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        trembler = _ref[_i];
+        trembler.state.spike = false;
+        _results.push(trembler.network = null);
+      }
+      return _results;
     };
 
     return Network;
@@ -242,6 +271,7 @@
             this.network = new Network(this);
           } else {
             this.network = spiked_neighbors[0].network;
+            this.network.add_trembler(this);
           }
         }
       } else {
@@ -298,11 +328,12 @@
     $container = $('#container');
     tremble = window.tremble = new Tremble({
       container: $container,
-      width: $container.width(),
-      height: $container.height(),
       speed: 10
     });
-    return tremble.start();
+    tremble.start();
+    return $(window).resize(function() {
+      return tremble.resize();
+    });
   });
 
 }).call(this);
