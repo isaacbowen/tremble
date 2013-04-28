@@ -15,7 +15,7 @@ class Tremble
 
     light:
       color: 0xFFFFFF
-      intensity: 0.6
+      intensity: 0.5
       position:
         x: 300
         y: 500
@@ -68,9 +68,9 @@ class Tremble
     $.extend @light.position, @config.light.position
     @scene.add @light
 
-    # extra ambient light
-    ambient_light = new THREE.AmbientLight 0x999999
-    @scene.add ambient_light
+    @light = new THREE.HemisphereLight 0xFFFFFF, 0xCCCCCC, 0.7
+    # $.extend @light.position, @config.light.position
+    @scene.add @light
 
     # here
     @renderer = new THREE.WebGLRenderer()
@@ -115,11 +115,13 @@ class Tremble
     if @state.started
       window.requestAnimationFrame(@render)
 
-class SpikeNetwork
+class Network
   constructor: (root) ->
     @root = root
     @tremblers = [root]
     @size = 1
+
+    @color = Math.floor(Math.random() * 0xFFFFFF)
 
   add_trembler: (trembler) ->
     @tremblers.push trembler
@@ -182,7 +184,10 @@ class Trembler
 
   tremble: ->
     spiked_neighbors = @get_neighbors(true)
-    spike_bias = spiked_neighbors[0]?.spike_network.size or 0
+
+    local_network = spiked_neighbors[0]?.network
+    local_network_size = local_network?.size or 0
+    local_network_size = 0 unless local_network?.root?.state?.spike
 
     # switch direction
     @state.direction *= -1
@@ -190,34 +195,38 @@ class Trembler
     # shall we spike?
     if @state.direction == 1 # up
       unless @state.spike
-        spike_probability = Math.random()
-        spike_probability += (@config.trembler.spike.probability * @config.trembler.spike.bias) * spike_bias
-
-        if 1 - spike_probability <= @config.trembler.spike.probability
+        if spiked_neighbors.length >= 4
           @state.spike = true
+        else
+          spike_probability = Math.random()
+          spike_probability += (@config.trembler.spike.probability * @config.trembler.spike.bias) * local_network_size
 
-          if spiked_neighbors.length == 0
-            @spike_network = new SpikeNetwork this
-          else
-            @spike_network = spiked_neighbors[0].spike_network
+          if 1 - spike_probability <= @config.trembler.spike.probability
+            @state.spike = true
+
+      if @state.spike and not @network
+        if spiked_neighbors.length == 0
+          @network = new Network this
+        else
+          @network = spiked_neighbors[0].network
 
     # shall we unspike?
     else
       if @state.spike
-        if not @spike_network.root.state.spike
+        if not @network.root.state.spike
           @state.spike = false
         else
           p = Math.random()
 
           # spike roots are, oddly, more fragile
-          unless @spike_network.root == this
-            p -= (@config.trembler.spike.restore_probability * @config.trembler.spike.restore_bias) * spike_bias
+          unless @network.root == this
+            p -= (@config.trembler.spike.restore_probability * @config.trembler.spike.restore_bias) * local_network_size
 
           if 1 - p <= @config.trembler.spike.restore_probability
             @state.spike = false
 
       if not @state.spike
-        @spike_network = null
+        @network = null
 
     # where to?
     tremble_to = 0
@@ -230,6 +239,9 @@ class Trembler
     # handle spike conditions
     if @state.spike
       tremble_to += @config.trembler.spike.base
+      @mesh_material.color.setHex @network.color
+    else
+      @mesh_material.color.setHex @config.trembler.color
 
     # build the tween
     trembler = this
