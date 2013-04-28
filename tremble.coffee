@@ -124,7 +124,7 @@ class Tremble
     # have we been overcome?
     for trembler in @tremblers
       if trembler.network?.size == @tremblers.length
-        @config.trembler.color = trembler.network.color
+        # @config.trembler.color = trembler.network.color
         trembler.network.kill()
 
     @renderer.render @scene, @camera

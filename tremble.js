@@ -143,7 +143,6 @@
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         trembler = _ref[_i];
         if (((_ref1 = trembler.network) != null ? _ref1.size : void 0) === this.tremblers.length) {
-          this.config.trembler.color = trembler.network.color;
           trembler.network.kill();
         }
       }
